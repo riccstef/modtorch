@@ -12,7 +12,7 @@ class NN_Model(nn.Module):
         if 'basic' not in all_modules: all_modules.append('basic')
         all_modules_dict = {}
         for x in all_modules:
-            all_modules_dict[x] = import_module(x)
+            all_modules_dict[x] = import_module(f".{x}", package=__package__)
         self.layers = nn.ModuleList()
         aux_check = False
         for l in layers:
@@ -93,7 +93,7 @@ class MOE_Model(nn.Module):
         if 'basic' not in all_modules: all_modules.append('basic')
         all_modules_dict = {}
         for x in all_modules:
-            all_modules_dict[x] = import_module(x)
+            all_modules_dict[x] = import_module(f".{x}", package=__package__)
         self.n_experts = len(expert_layers)
         self.expert_layers = nn.ModuleList()
         self.gathing = gathing

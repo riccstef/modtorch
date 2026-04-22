@@ -1,4 +1,4 @@
-import modlib
+from . import modlib
 
 def Reshape(l):
     return modlib.Reshape(l['shape'])

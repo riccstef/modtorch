@@ -12,6 +12,12 @@ In MODTORCH, a network is defined as a list of dictionaries. Each dictionary rep
 
 This makes it possible to define complex architectures dynamically, including custom tensor manipulations, multiple inputs, saved intermediate tensors, and reusable named outputs.
 
+## Installation
+
+```bash
+pip install modtorch
+```
+
 ## Rules
 
 Each dictionary in the list describes one step of the network.
@@ -42,6 +48,10 @@ Given a list of input tensors, you can load them in two ways:
 - Use `'name': 'xyz'` to load a previously saved tensor and use it as the input of the current layer.
 - If `'name'` is not specified, the output of the previous layer is used.
 - If a layer requires multiple inputs, use `'name_list': ['abc', 'xyz']`.
+
+## Defining custom layers
+
+To extend `modtorch` with custom layers, create an importable Python module that the library can link to, **similar to `custom.py`**.
 
 ## Custom flags
 

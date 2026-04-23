@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +8,12 @@ version = "0.1.0"
 description = "A meta-language to build PyTorch networks dynamically"
 readme = "README.md"
 requires-python = ">=3.9"
+license = "MIT"
+authors = [{name = "Stefano Ricci"}]
 dependencies = ["torch==2.9.1","torchvision==0.26.0"]
+
+[project.urls]
+Homepage = "https://github.com/riccstef/modtorch"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

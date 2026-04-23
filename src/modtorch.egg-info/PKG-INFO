@@ -2,9 +2,14 @@ Metadata-Version: 2.4
 Name: modtorch
 Version: 0.1.0
 Summary: A meta-language to build PyTorch networks dynamically
+Author: Stefano Ricci
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/riccstef/modtorch
 Requires-Python: >=3.9
 Description-Content-Type: text/markdown
 License-File: LICENSE
+Requires-Dist: torch==2.9.1
+Requires-Dist: torchvision==0.26.0
 Dynamic: license-file
 
 # MODTORCH

@@ -173,8 +173,6 @@ prev = NN([ts, img, static])
 print(f'Output 1: {prev[0].detach()} - Output 2: {prev[1].detach()} - Gate: {prev[2].detach()}')
 ```
 
-More standard PyTorch or custom layers could be easily added to the libraries.
-
 ## Notes
 
 - MODTORCH is designed for flexibility and rapid experimentation.

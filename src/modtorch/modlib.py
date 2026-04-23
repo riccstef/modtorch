@@ -171,7 +171,7 @@ class CBAM(nn.Module):
         return x
 
 class TSMixer(nn.Module):
-    def __init__(self, n_lag, n_features, n_output, n_ts=None, n_hidden=None, n_mixer=1, activation='fastglu', dropout=0.0, dropout_fm=None,
+    def __init__(self, n_lag, n_features, n_output, n_ts=None, n_hidden=None, n_mixer=1, activation='linear', dropout=0.0, dropout_fm=None,
         normalization='BatchNorm', output_hidden=False, causal=False):
         super().__init__()
         if n_hidden is None:
@@ -273,6 +273,81 @@ class _MixerTP(nn.Module):
         x_tp = self.linear_tp(x.transpose(1,2)).squeeze(2)
         return x_tp
 
+class TSMixerExt(nn.Module):
+    def __init__(self, n_lag, n_features, n_static, n_output, n_ts=None, n_hidden=None, n_hidden_static=None, n_mixer=1, n_static_mixer=1,
+        activation='linear', activation_mixing_stage=None, dropout=0.0, dropout_fm=None, dropout_sm=None, normalization='BatchNorm',
+        output_hidden=False, causal=False):
+        super().__init__()
+        if n_ts is None:
+            n_ts = n_lag
+        if n_hidden is None:
+            n_hidden = n_features
+        if n_hidden_static is None:
+            n_hidden_static = n_hidden
+        if activation_mixing_stage is None:
+            activation_mixing_stage = activation
+        if dropout_fm is None:
+            dropout_fm = dropout
+        if dropout_sm is None:
+            dropout_sm = dropout
+        self.mixer = nn.ModuleList([
+            _Mixer(n_lag, n_features, n_ts, n_hidden, n_hidden, activation, dropout, dropout_fm, normalization, causal) if i==0
+            else _Mixer(n_ts, n_hidden, n_ts, n_hidden, n_hidden, activation, dropout, dropout_fm, normalization, causal) for i in range(n_mixer)])
+        self.tp = _MixerTP(n_ts)
+        self.static_feature_mixing = nn.ModuleList([
+            _FeatureMixing(n_static, n_hidden_static, activation_mixing_stage, dropout_sm, normalization) for _ in range(n_static_mixer)])
+        self.feature_mixing = nn.ModuleList([
+            _FeatureMixing(n_hidden+n_hidden_static, n_hidden, activation_mixing_stage, dropout_sm, normalization)
+            if i<n_static_mixer-1
+            else _FeatureMixing(n_hidden+n_hidden_static, n_output, activation, dropout_sm, normalization) for i in range(n_static_mixer)])
+        self.output_hidden = output_hidden
+
+    def forward(self, x_list):
+        x = x_list[0]
+        static = x_list[1]
+        for m in self.mixer:
+            x = m(x)
+        if self.output_hidden:
+            x_hidden = x
+        x = self.tp(x)
+        for sfm, fm in zip(self.static_feature_mixing, self.feature_mixing):
+            static_fm = sfm(static)
+            x = fm(torch.concat((x, static_fm), dim=1))
+        if self.output_hidden:
+            return x, x_hidden
+        else:
+            return x
+
+class _FeatureMixing(nn.Module):
+    def __init__(self, n_input, n_output, activation, dropout, normalization):
+        super().__init__()
+        if n_output != n_input:
+            self.linear_res = nn.Linear(n_input, n_output)
+        else:
+            self.linear_res = nn.Identity()
+        self.activation_static = get_activation(activation, input_size=n_output)
+        if normalization == 'BatchNorm':
+            self.norm_static = nn.BatchNorm1d(n_input)
+        elif normalization == 'LayerNorm':
+            self.norm_static = nn.LayerNorm(n_input)
+        elif normalization is None:
+            self.norm_static = nn.Identity()
+        else:
+            raise Exception(f"Normalizzazione {normalization} non disponibile\n")
+        if dropout > 0:
+            self.dropout = nn.Dropout(dropout)
+        else:
+            self.dropout = nn.Identity()
+        self.linear_static_1 = nn.Linear(n_input, n_output)
+        self.linear_static_2 = nn.Linear(n_output, n_output)
+
+    def forward(self, x):
+        static_fm = self.norm_static(x)
+        static_fm = self.dropout(self.linear_static_2(self.dropout(self.activation_static(self.linear_static_1(static_fm)))))
+        x = self.linear_res(x)
+        static_fm = static_fm + x
+        return static_fm
+
 class GCBlock(nn.Module):
     def __init__(self, channels, reduction, activation):
         super().__init__()
@@ -293,3 +368,112 @@ class GCBlock(nn.Module):
         out = x + v.view(B, C, 1, 1)
         return out
 
+class LSTM_Sequence(nn.LSTM):
+    def __init__(self, input_size, hidden_size, num_layers=1, batch_first=True, dropout=0.0, bidirectional=False):
+        super(LSTM_Sequence, self).__init__(input_size, hidden_size, num_layers, batch_first=batch_first, dropout=dropout,
+            bidirectional=bidirectional)
+    
+    def forward(self, x, hx=None):
+        return super(LSTM_Sequence, self).forward(x, hx)[0]
+    
+class LSTM_Last(nn.LSTM):
+    def __init__(self, input_size, hidden_size, num_layers=1, batch_first=True, dropout=0.0, bidirectional=False):
+        super(LSTM_Last, self).__init__(input_size, hidden_size, num_layers, batch_first=batch_first, dropout=dropout,
+            bidirectional=bidirectional)
+    
+    def forward(self, x, hx=None):
+        return super(LSTM_Last, self).forward(x, hx)[0][:,-1,:]
+
+class GhostBatchNorm2d(nn.Module):
+    def __init__(self, num_features, ghost_batch_size):
+        super().__init__()
+        self.bn = nn.BatchNorm2d(num_features)
+        self.ghost_batch_size = ghost_batch_size
+
+    def forward(self, x):
+        N = len(x)
+        if not self.training or N <= self.ghost_batch_size:
+            return self.bn(x)
+        chunks = torch.chunk(x, N // self.ghost_batch_size, dim=0)
+        out = [self.bn(chunk) for chunk in chunks]
+        return torch.cat(out, dim=0)
+
+class MixConv2d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_sizes, stride, dilation, bias, split):
+        super().__init__()
+        self.kernel_sizes = kernel_sizes
+        self.split=split
+        m = len(kernel_sizes)
+        if isinstance(dilation, int):
+            dilations = [dilation] * m
+        else:
+            assert len(dilation) == m
+            dilations = list(dilation)
+        if split and in_channels >= m:
+            base = in_channels // m
+            splits = [base] * m
+            for i in range(in_channels - sum(splits)):
+                splits[i % m] += 1
+            self.splits = splits
+            self.pw_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=bias)
+        else:
+            self.splits = [in_channels] * m
+            self.pw_conv = nn.Conv2d(in_channels*m, out_channels, kernel_size=1, bias=bias)
+        self.dw_convs = nn.ModuleList()
+        for ch, k, d in zip(self.splits, self.kernel_sizes, dilations):
+            pad = (d * (k - 1)) // 2 
+            self.dw_convs.append(nn.Conv2d(ch, ch, kernel_size=k, stride=stride, padding=pad, dilation=d, groups=ch, bias=False))
+
+    def forward(self, x):
+        if self.split:
+            xs = torch.split(x, self.splits, dim=1)
+            x = torch.cat([conv(xi) for xi, conv in zip(xs, self.dw_convs)], dim=1)
+        else:
+            x = torch.cat([conv(x) for conv in self.dw_convs], dim=1)
+        x = self.pw_conv(x)
+        return x
+
+class MixConv2dGLU(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_sizes, stride, dilation, bias, split, normalization, **kwargs):
+        super().__init__()
+        if normalization == 'BatchNorm2d':
+            self.bn = nn.BatchNorm2d(out_channels*2)
+        elif normalization == 'GroupNorm':
+            self.bn = nn.GroupNorm(kwargs['num_groups']*2, out_channels*2)
+        elif normalization == 'GhostBatchNorm2d':
+            self.bn = GhostBatchNorm2d(out_channels*2, kwargs['ghost_batch_size'])
+        else:
+            self.bn = nn.Identity()
+        self.conv = MixConv2d(in_channels, out_channels*2, kernel_sizes, stride, dilation, bias, split)
+        self.glu = nn.GLU(dim=1)
+
+    def forward(self, x):
+        return self.glu(self.bn(self.conv(x)))
+
+class Conv2dGLU(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias, normalization, padding_mode, **kwargs):
+        super().__init__()
+        if normalization == 'BatchNorm2d':
+            self.bn = nn.BatchNorm2d(out_channels*2)
+        elif normalization == 'GroupNorm':
+            self.bn = nn.GroupNorm(kwargs['num_groups']*2, out_channels*2)
+        elif normalization == 'GhostBatchNorm2d':
+            self.bn = GhostBatchNorm2d(out_channels*2, kwargs['ghost_batch_size'])
+        else:
+            self.bn = nn.Identity()
+        self.conv = nn.Conv2d(in_channels, out_channels*2, kernel_size, stride, padding, dilation, groups, bias, padding_mode)
+        self.glu = nn.GLU(dim=1)
+
+    def forward(self, x):
+        return self.glu(self.bn(self.conv(x)))
+
+class GaussianNoise(nn.Module):
+    def __init__(self, std=1.0):
+        super().__init__()
+        self.std = std
+
+    def forward(self, x):
+        if self.training:
+            noise = torch.randn_like(x) * self.std
+            return x + noise
+        return x

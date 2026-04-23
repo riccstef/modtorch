@@ -9,5 +9,4 @@ src/modtorch/modlib.py
 src/modtorch.egg-info/PKG-INFO
 src/modtorch.egg-info/SOURCES.txt
 src/modtorch.egg-info/dependency_links.txt
-src/modtorch.egg-info/requires.txt
 src/modtorch.egg-info/top_level.txt

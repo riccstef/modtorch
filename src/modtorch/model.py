@@ -1,4 +1,5 @@
-import torch
+import torch, sys
+from pathlib import Path
 from torch import nn
 from importlib import import_module
 
@@ -11,8 +12,14 @@ class NN_Model(nn.Module):
         all_modules = list({d['module'] for d in layers if 'module' in d})
         if 'basic' not in all_modules: all_modules.append('basic')
         all_modules_dict = {}
+        from_dir = Path(sys.argv[0]).resolve().parent
+        if str(from_dir) not in sys.path:
+            sys.path.insert(0, str(from_dir))
         for x in all_modules:
-            all_modules_dict[x] = import_module(f".{x}", package=__package__)
+            try:
+                all_modules_dict[x] = import_module(x)
+            except ModuleNotFoundError:
+                all_modules_dict[x] = import_module(f".{x}", package=__package__)
         self.layers = nn.ModuleList()
         aux_check = False
         for l in layers:

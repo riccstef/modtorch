@@ -1,9 +1,9 @@
 from modtorch import NN_Model
 import torch
 
-ts = torch.rand(1000, 20, 6)
-img = torch.rand(1000, 3, 64, 64)
-static = torch.rand(1000, 10)
+ts = torch.rand(1, 20, 6)
+img = torch.rand(1, 3, 64, 64)
+static = torch.rand(1, 10)
 
 nn_layers = [
     {'add_input': True, 'save': 'time_series'},
@@ -36,9 +36,10 @@ nn_layers = [
     {'layer': 'LayerNorm', 'normalized_shape': 4},
     {'layer': 'Softmax', 'dim': 1, 'save': 'gate'},
     {'module': 'custom', 'layer': 'Multiply', 'name_list': ['ts_mixer->out','gate']},
-    {'module': 'custom', 'layer': 'Split', 'indices': [2], 'dim': 1}
+    {'module': 'custom', 'layer': 'Split', 'indices': [2], 'dim': 1, 'save': ['out1','out2']},
+    {'output_list': ['out1','out2', 'gate']}
 ]
 
 NN = NN_Model(nn_layers)
 prev = NN([ts, img, static])
-print(f'Output 1: {prev[0].detach()} - Output 2: {prev[1].detach()}')
+print(f'Output 1: {prev[0].detach()} - Output 2: {prev[1].detach()} - Gate: {prev[2].detach()}')

@@ -49,6 +49,10 @@ Given a list of input tensors, you can load them in two ways:
 - If `'name'` is not specified, the output of the previous layer is used.
 - If a layer requires multiple inputs, use `'name_list': ['abc', 'xyz']`.
 
+## Defining custom layers
+
+To add custom layers to `modtorch`, create a module that can be imported by the library (in a simlar way as `custom.py`).
+
 ## Custom flags
 
 You can add custom flags to any dictionary for later use during training or post-processing.

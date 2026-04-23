@@ -12,6 +12,12 @@ In MODTORCH, a network is defined as a list of dictionaries. Each dictionary rep
 
 This makes it possible to define complex architectures dynamically, including custom tensor manipulations, multiple inputs, saved intermediate tensors, and reusable named outputs.
 
+## Installation
+
+```bash
+pip install modtorch
+```
+
 ## Rules
 
 Each dictionary in the list describes one step of the network.

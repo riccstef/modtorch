@@ -51,7 +51,7 @@ Given a list of input tensors, you can load them in two ways:
 
 ## Defining custom layers
 
-To add custom layers to `modtorch`, create a module that can be imported by the library (in a simlar way as `custom.py`).
+To extend `modtorch` with custom layers, create an importable Python module that the library can link to, **similar to `custom.py`**.
 
 ## Custom flags
 
